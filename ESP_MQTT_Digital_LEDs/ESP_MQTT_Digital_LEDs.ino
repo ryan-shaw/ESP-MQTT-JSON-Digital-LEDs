@@ -20,6 +20,8 @@
       - ArduinoJSON
 */
 
+#define FASTLED_ESP8266_D1_PIN_ORDER
+
 #include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
@@ -31,9 +33,9 @@
 
 
 /************ WIFI and MQTT Information (CHANGE THESE FOR YOUR SETUP) ******************/
-const char* ssid = "YourSSID"; //type your WIFI information inside the quotes
-const char* password = "YourWIFIpassword";
-const char* mqtt_server = "your.MQTT.server.ip";
+const char* ssid = "wifi"; //type your WIFI information inside the quotes
+const char* password = "password";
+const char* mqtt_server = "mqtt.server";
 const char* mqtt_username = "yourMQTTusername";
 const char* mqtt_password = "yourMQTTpassword";
 const int mqtt_port = 1883;
@@ -41,15 +43,15 @@ const int mqtt_port = 1883;
 
 
 /**************************** FOR OTA **************************************************/
-#define SENSORNAME "porch" //change this to whatever you want to call your device
-#define OTApassword "yourOTApassword" //the password you will need to enter to upload remotely via the ArduinoIDE
+#define SENSORNAME "study_desk" //change this to whatever you want to call your device
+#define OTApassword "changeme" //the password you will need to enter to upload remotely via the ArduinoIDE
 int OTAport = 8266;
 
 
 
 /************* MQTT TOPICS (change these topics as you wish)  **************************/
-const char* light_state_topic = "bruh/porch";
-const char* light_set_topic = "bruh/porch/set";
+const char* light_state_topic = "study/desk";
+const char* light_set_topic = "study/desk/set";
 
 const char* on_cmd = "ON";
 const char* off_cmd = "OFF";
@@ -66,7 +68,7 @@ const int BUFFER_SIZE = JSON_OBJECT_SIZE(10);
 
 
 /*********************************** FastLED Defintions ********************************/
-#define NUM_LEDS    186
+#define NUM_LEDS    22
 #define DATA_PIN    5
 //#define CLOCK_PIN 5
 #define CHIPSET     WS2811
@@ -306,11 +308,11 @@ void callback(char* topic, byte* payload, unsigned int length) {
 
 /********************************** START PROCESS JSON*****************************************/
 bool processJson(char* message) {
-  StaticJsonBuffer<BUFFER_SIZE> jsonBuffer;
+  StaticJsonDocument<200> root;
+  
+  auto error = deserializeJson(root, message);
 
-  JsonObject& root = jsonBuffer.parseObject(message);
-
-  if (!root.success()) {
+  if (error) {
     Serial.println("parseObject() failed");
     return false;
   }
@@ -385,7 +387,7 @@ bool processJson(char* message) {
     if (root.containsKey("color_temp")) {
       //temp comes in as mireds, need to convert to kelvin then to RGB
       int color_temp = root["color_temp"];
-      unsigned int kelvin  = MILLION / color_temp;
+      unsigned int kelvin  = 1000000 / color_temp;
       
       temp2rgb(kelvin);
       
@@ -417,12 +419,11 @@ bool processJson(char* message) {
 
 /********************************** START SEND STATE*****************************************/
 void sendState() {
-  StaticJsonBuffer<BUFFER_SIZE> jsonBuffer;
+  DynamicJsonDocument root(1024);
 
-  JsonObject& root = jsonBuffer.createObject();
 
   root["state"] = (stateOn) ? on_cmd : off_cmd;
-  JsonObject& color = root.createNestedObject("color");
+  JsonObject color = root.createNestedObject("color");
   color["r"] = red;
   color["g"] = green;
   color["b"] = blue;
@@ -431,8 +432,8 @@ void sendState() {
   root["effect"] = effectString.c_str();
 
 
-  char buffer[root.measureLength() + 1];
-  root.printTo(buffer, sizeof(buffer));
+  char buffer[measureJson(root) + 1];
+  serializeJson(root, buffer, sizeof(buffer));
 
   client.publish(light_state_topic, buffer, true);
 }
